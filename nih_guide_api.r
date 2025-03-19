@@ -1,6 +1,6 @@
 ## required packages: httr and jsonlite
 
-get_nih_guide <- function(activitycodes = "all", doctype = "all", parentfoa = "all", daterange = "all", clinicaltrials = "all", fields = "all", spons = "true", parentic = "all", primaryic = "all", type = "active,expired,notices,activenosis", query = "", from = 0, perpage = 25, sort = "reldate:desc", outfile) {
+get_nih_guide <- function(activitycodes = "all", doctype = "all", parentfoa = "all", daterange = "all", clinicaltrials = "all", fields = "all", spons = "true", parentic = "all", primaryic = "all", type = "active,expired,notices,activenosis", query = "", from = 0, perpage = 25, sort = "reldate:desc", outfile = "") {
 	## set up options and create containers for the retrieved data
 	base_url <- "https://search.grants.nih.gov/guide/api/data"
 	if (daterange == "all") {
@@ -36,11 +36,14 @@ get_nih_guide <- function(activitycodes = "all", doctype = "all", parentfoa = "a
 			the_data[[i]] <- jsonlite::fromJSON(the_json[[i]])
 		}
 	}		
-	## save the JSON results to the outfile
-	writeLines(unlist(the_json), con = outfile)
+	## save the JSON results to the outfile, if one is specified
+	if (outfile != "") {
+		writeLines(unlist(the_json), con = outfile)
+	}	
 	## reshape the JSON into a usable data frame and then return it
 	the_data <- extract_guide(the_data, the_source = "api")
 	return(the_data)
+	#return(the_json)
 }
 
 extract_guide <- function(x, the_source = "file") {
@@ -59,7 +62,7 @@ extract_guide <- function(x, the_source = "file") {
 	for (i in 1:length(the_data)) {
 		the_data[[i]] <- jsonlite::flatten(the_data[[i]]$data$hits$hits)
 		colnames(the_data[[i]]) <- gsub("_source.|_", "", colnames(the_data[[i]]))
-		the_data[[i]] <- the_data[[i]][,colnames(the_data[[i]]) %in% c("index", "id", "score", "sort", "ignored", "suggest.input", "highlight.primaryIC") == FALSE]
+		the_data[[i]] <- the_data[[i]][,colnames(the_data[[i]]) %in% c("index", "id", "score", "sort", "ignored", "suggest.input", "highlight.primaryIC", "highlight.ac") == FALSE]
 		list_cols <- which(sapply(1:ncol(the_data[[i]]), function(x) is.list(the_data[[i]][,x])))
 		for (j in 1:length(list_cols)) {
 		  the_data[[i]][,list_cols[j]] <- sapply(the_data[[i]][,list_cols[j]], paste, collapse = ";")
