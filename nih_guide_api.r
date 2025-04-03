@@ -62,7 +62,8 @@ extract_guide <- function(x, the_source = "file") {
 	for (i in 1:length(the_data)) {
 		the_data[[i]] <- jsonlite::flatten(the_data[[i]]$data$hits$hits)
 		colnames(the_data[[i]]) <- gsub("_source.|_", "", colnames(the_data[[i]]))
-		the_data[[i]] <- the_data[[i]][,colnames(the_data[[i]]) %in% c("index", "id", "score", "sort", "ignored", "suggest.input", "highlight.primaryIC", "highlight.ac") == FALSE]
+		the_data[[i]] <- the_data[[i]][,colnames(the_data[[i]]) %in% c("index", "id", "score", "sort", "ignored", "suggest.input", "highlight.primaryIC", "highlight.ac", "highlight.docnum") == FALSE]
+		the_data[[i]] <- the_data[[i]][,grepl("highlight\\.", colnames(the_data[[i]])) == FALSE]
 		list_cols <- which(sapply(1:ncol(the_data[[i]]), function(x) is.list(the_data[[i]][,x])))
 		for (j in 1:length(list_cols)) {
 		  the_data[[i]][,list_cols[j]] <- sapply(the_data[[i]][,list_cols[j]], paste, collapse = ";")
@@ -76,5 +77,38 @@ extract_guide <- function(x, the_source = "file") {
 	the_data <- do.call(rbind, the_data)
 	the_data$title <- gsub("\\s+?", " ", the_data$title)
 	the_data$purpose <- gsub("\\s+?", " ", the_data$purpose)
+	the_data$nofo_url[grepl("^PA", the_data$doctype)] <- paste0("https://grants.nih.gov/grants/guide/pa-files/", the_data$filename[grepl("^PA", the_data$doctype)])
+	the_data$nofo_url[grepl("^RFA", the_data$doctype)] <- paste0("https://grants.nih.gov/grants/guide/rfa-files/", the_data$filename[grepl("^RFA", the_data$doctype)])
+	the_data$nofo_url[grepl("^NOT", the_data$doctype)] <- paste0("https://grants.nih.gov/grants/guide/notice-files/", the_data$filename[grepl("^NOT", the_data$doctype)])
 	return(the_data)
+}
+
+get_related_nofos <- function(nofo_num) {
+	current_foa <- nofo_num
+	curr_doc <- get_nih_guide(query = paste0("\"", current_foa, "\""))
+	the_docs <- curr_doc
+	rel_nofos <- curr_doc %>% 
+	  filter(parentFOA == "No") %>% 
+	  select(relatedDocs) %>% 
+	  separate_rows(relatedDocs, sep = ";") %>% 
+	  filter(grepl("RFA|PA", relatedDocs)) %>% 
+	  mutate(relatedDocs = gsub(".+ ", "", relatedDocs)) %>% 
+	  unique() %>% 
+	  filter(relatedDocs %in% the_docs$docnum == FALSE, grepl("-\\d{3}", relatedDocs))
+	Sys.sleep(1)
+	while(nrow(rel_nofos) > 0) {
+	curr_doc <- get_nih_guide(query = paste0("\"", rel_nofos$relatedDocs, "\"", collapse = " OR "))
+	the_docs <- the_docs %>% bind_rows(curr_doc) %>% unique()
+	rel_nofos <- curr_doc %>% 
+	  filter(parentFOA == "No") %>% 
+	  select(relatedDocs) %>% 
+	  separate_rows(relatedDocs, sep = ";") %>% 
+	  filter(grepl("RFA|PA", relatedDocs)) %>% 
+	  mutate(relatedDocs = gsub(".+ ", "", relatedDocs)) %>% 
+	  unique() %>% 
+	  filter(relatedDocs %in% the_docs$docnum == FALSE, grepl("\\d{2}-\\d{3}", relatedDocs))
+	  Sys.sleep(1)
+	}
+	the_docs <- the_docs %>% filter(parentFOA == "No")
+	return(the_docs)
 }
